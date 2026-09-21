@@ -2,7 +2,7 @@
 """Static memory allocation checker for NumWorks MicroPython scripts.
 
 Usage:
-    python3 tools/test_allocs.py games/maties.py
+    python3 tools/test_allocs.py games/snake.py
     python3 tools/test_allocs.py games/*.py
 
 Parses the Python AST and flags any dynamic heap allocations (lists, tuples,

@@ -2,7 +2,7 @@
 
 import unittest
 from pathlib import Path
-from numworks.deploy import run_all_checks, check_syntax, check_size, check_allocations
+from numworks.deploy import check_syntax, check_size
 
 
 class TestGames(unittest.TestCase):
@@ -11,21 +11,6 @@ class TestGames(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.games_dir = Path(__file__).parent.parent / "games"
-
-    def test_maties_memory_safety(self):
-        """Verify maties.py has zero hot-loop allocations and fits heap limits."""
-        path = self.games_dir / "maties.py"
-        self.assertTrue(path.exists(), "maties.py must exist")
-
-        source = path.read_text(encoding="utf-8")
-        checks = run_all_checks(source, filename=str(path))
-
-        for check in checks:
-            with self.subTest(check=check.name):
-                self.assertTrue(
-                    check.passed,
-                    f"{check.name} failed: {check.message}\n" + "\n".join(check.details)
-                )
 
     def test_all_games_syntax(self):
         """Verify all .py files in games/ have valid Python syntax."""

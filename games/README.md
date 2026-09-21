@@ -6,21 +6,9 @@ A collection of optimized games for the NumWorks N0120 graphing calculator runni
 
 ## Games Collection
 
-### 1. Maties (`games/maties.py`)
-- **Genre**: 3D Raycasting PvE Wave Survival Shooter
-- **Features**:
-  - Distance flow field enemy AI (zero-allocation O(1) pathfinding)
-  - 8-enemy active tracking via fixed-size C-style parallel arrays
-  - Real-time HUD and live radar display
-  - Single-pass non-overlapping column renderer (zero flicker)
-  - Custom retro red block-letter "MATIES" title screen
-  - Wave progression, score multiplier, muzzle flash, hit markers
-- **Controls**:
-  - `Arrow Keys`: Move forward/backward, rotate left/right
-  - `OK`: Fire weapon
-  - `Clear` (`KEY_BACKSPACE`): In-game restart / menu
+> Looking for **Maties**, the 3D wave-survival shooter? It now lives as a native C app at [`c_apps/maties/`](../c_apps/maties/) — full 60 FPS with hardware V-Sync instead of the Python engine's software renderer. Build it with `make -C c_apps/maties` and sideload with `numworks deploy-nwa c_apps/maties/output/app.nwa`. See [docs/c-apps-sdk.md](../docs/c-apps-sdk.md).
 
-### 2. Floom (`games/floom.py`)
+### 1. Floom (`games/floom.py`)
 - **Genre**: 3D Raycasting Maze Crawler
 - **Features**:
   - Generative 16x16 maze layout
@@ -32,7 +20,7 @@ A collection of optimized games for the NumWorks N0120 graphing calculator runni
   - `OK`: Shoot
   - `Clear` (`KEY_BACKSPACE`): Menu / Restart
 
-### 3. Snake (`games/snake.py`)
+### 2. Snake (`games/snake.py`)
 - **Genre**: Classic 2D Grid Arcade
 - **Features**: Compact, lightweight 2D grid rendering
 
@@ -61,5 +49,5 @@ Before adding or modifying any game in this directory, ensure it adheres to the 
 
 4. **Deploying to Hardware**:
    ```bash
-   numworks deploy games/maties.py --clean
+   numworks deploy games/floom.py --clean
    ```
