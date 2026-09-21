@@ -17,3 +17,7 @@ dependencies = [
 [project.scripts]
 numworks = "numworks.cli:main"
 nwprobe = "numworks.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["numworks*"]
+

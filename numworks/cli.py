@@ -232,37 +232,179 @@ def dump_scripts_cmd(output_dir: str):
     console.print(f"\n[bold green]Successfully dumped {len(result.scripts)} script(s) to {dest}/[/bold green]")
 
 
-@cli.command("dump-memory")
-@click.argument("address")
-@click.argument("length", type=int)
-@click.argument("output_file", type=click.Path())
-def dump_memory_cmd(address: str, length: int, output_file: str):
-    """Dump a raw memory/flash range via DFU upload. ADDRESS can be hex (0x...) or dec."""
-    addr = int(address, 0)
+@scripts_group.command("install")
+@click.argument("script_file", type=click.Path(exists=True))
+@click.option("--name", help="Name to use on the calculator (defaults to filename)")
+@click.option("--auto-import", is_flag=True, help="Auto-import the script in the python shell")
+def install_script_cmd(script_file: str, name: str, auto_import: bool):
+    """Install a local Python script onto the calculator."""
+    path = Path(script_file)
+    if not name:
+        name = path.name
+    if not name.endswith(".py"):
+        name += ".py"
+
+    code = path.read_text(encoding="utf-8")
+
     dev = NumWorksDevice.find_first()
     if not dev:
         console.print("[bold red]No NumWorks calculator detected![/bold red]")
         sys.exit(1)
 
     probe = CalculatorProbe(dev)
+    try:
+        with console.status("[bold green]Installing script...") as status:
+            probe.install_script(
+                name,
+                code,
+                auto_import=auto_import,
+                progress_callback=lambda msg: status.update(f"[bold green]{msg}")
+            )
+        console.print(f"[bold green]Successfully installed {name}![/bold green]")
+    except Exception as e:
+        console.print(f"[bold red]Error: {e}[/bold red]")
+        sys.exit(1)
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        DownloadColumn(),
-    ) as progress:
-        task = progress.add_task(f"Dumping {length} bytes from 0x{addr:08x}...", total=length)
 
-        data = probe.dump_memory(
-            addr,
-            length,
-            progress_callback=lambda current, total: progress.update(task, completed=current),
-        )
+@scripts_group.command("uninstall")
+@click.argument("name")
+def uninstall_script_cmd(name: str):
+    """Uninstall a Python script from the calculator."""
+    dev = NumWorksDevice.find_first()
+    if not dev:
+        console.print("[bold red]No NumWorks calculator detected![/bold red]")
+        sys.exit(1)
 
-    out_path = Path(output_file)
-    out_path.write_bytes(data)
-    console.print(f"[bold green]Dumped {len(data)} bytes to {out_path}[/bold green]")
+    probe = CalculatorProbe(dev)
+    try:
+        success = probe.uninstall_script(name, progress_callback=lambda msg: print(msg))
+        if success:
+            console.print(f"[bold green]Successfully uninstalled {name}![/bold green]")
+        else:
+            console.print(f"[bold yellow]Script {name} was not found on the calculator.[/bold yellow]")
+    except Exception as e:
+        console.print(f"[bold red]Error: {e}[/bold red]")
+        sys.exit(1)
+
+
+
+@cli.command("deploy")
+@click.argument("script_file", type=click.Path(exists=True))
+@click.option("--name", help="Name to use on the calculator (defaults to filename)")
+@click.option("--clean", is_flag=True, help="Remove all non-system scripts before installing")
+@click.option("--force", is_flag=True, help="Skip pre-deploy safety checks")
+def deploy_cmd(script_file: str, name: str, clean: bool, force: bool):
+    """Deploy a script to the calculator with pre-flight safety checks.
+
+    Runs static allocation analysis and size checks before uploading.
+    Use --force to skip checks (not recommended).
+    """
+    from .deploy import run_all_checks
+
+    path = Path(script_file)
+    if not name:
+        name = path.name
+    if not name.endswith(".py"):
+        name += ".py"
+
+    source = path.read_text(encoding="utf-8")
+
+    # Run pre-deploy checks
+    if not force:
+        checks = run_all_checks(source, filename=str(path))
+        all_passed = True
+        for check in checks:
+            icon = "[bold green]✓[/bold green]" if check.passed else "[bold red]✗[/bold red]"
+            console.print(f"  {icon} [bold]{check.name}[/bold]: {check.message}")
+            for detail in check.details:
+                console.print(f"    [dim]{detail}[/dim]")
+            if not check.passed:
+                all_passed = False
+
+        if not all_passed:
+            console.print("\n[bold red]Pre-deploy checks failed.[/bold red] Use --force to override.")
+            sys.exit(1)
+        console.print()
+
+    # Connect and deploy
+    dev = NumWorksDevice.find_first()
+    if not dev:
+        console.print("[bold red]No NumWorks calculator detected![/bold red]")
+        console.print("Please connect the calculator and navigate to the USB 'Connected' screen.")
+        sys.exit(1)
+
+    probe = CalculatorProbe(dev)
+    try:
+        with console.status("[bold green]Deploying script...") as status:
+            if clean:
+                status.update("[bold green]Cleaning non-system scripts...")
+                probe.clean_scripts(
+                    progress_callback=lambda msg: status.update(f"[bold green]{msg}")
+                )
+            status.update(f"[bold green]Installing {name}...")
+            probe.install_script(
+                name,
+                source,
+                auto_import=False,
+                progress_callback=lambda msg: status.update(f"[bold green]{msg}")
+            )
+        console.print(f"[bold green]✓ Successfully deployed {name}![/bold green]")
+    except Exception as e:
+        console.print(f"[bold red]Deploy error: {e}[/bold red]")
+        sys.exit(1)
+
+
+@cli.command("deploy-nwa")
+@click.argument("nwa_file", type=click.Path(exists=True))
+@click.option("--external-data", type=click.Path(exists=True), help="Optional external data file to bundle")
+def deploy_nwa_cmd(nwa_file: str, external_data: Optional[str] = None):
+    """Sideload an external C/C++ application (.nwa) to the calculator."""
+    import subprocess
+    cmd = ["npx", "--yes", "--", "nwlink@0.0.19", "install-nwa"]
+    if external_data:
+        cmd.extend(["--external-data", external_data])
+    cmd.append(nwa_file)
+
+    console.print(f"[bold cyan]Deploying NWA binary:[/bold cyan] {nwa_file}")
+    try:
+        res = subprocess.run(cmd)
+        if res.returncode == 0:
+            console.print("[bold green]✓ Successfully installed external application![/bold green]")
+        else:
+            console.print("[bold red]Failed to install external app.[/bold red]")
+            sys.exit(res.returncode)
+    except Exception as e:
+        console.print(f"[bold red]Execution error: {e}[/bold red]")
+        sys.exit(1)
+
+
+@cli.command("ls")
+def ls_cmd():
+    """List Python scripts stored on the calculator (shorthand for 'scripts list')."""
+    dev = NumWorksDevice.find_first()
+    if not dev:
+        console.print("[bold red]No NumWorks calculator detected![/bold red]")
+        sys.exit(1)
+
+    probe = CalculatorProbe(dev)
+    result = probe.probe()
+
+    if result.error:
+        console.print(f"[bold red]{result.error}[/bold red]")
+        sys.exit(1)
+
+    if not result.scripts:
+        console.print("[dim]No Python scripts found on device.[/dim]")
+        return
+
+    table = Table(title=f"Scripts on Calculator ({len(result.scripts)})")
+    table.add_column("Name", style="bold cyan")
+    table.add_column("Size", style="green")
+
+    for s in result.scripts:
+        table.add_row(s.name, f"{s.size:,} B")
+
+    console.print(table)
 
 
 def main():
@@ -271,3 +413,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
