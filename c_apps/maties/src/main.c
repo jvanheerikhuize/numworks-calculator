@@ -632,6 +632,21 @@ static void draw_enemies() {
 }
 
 // UI Drawing
+// The calculator has no speaker, so a shot's "impact" is sold visually: a
+// bright flash along the viewport edges timed to the same window as the
+// crosshair flash in try_shoot(), instead of an audio cue.
+static void draw_muzzle_flash_overlay() {
+  if (muzzle_flash <= 0.0f) return;
+  int t = (int)(muzzle_flash * 255.0f / 0.12f);
+  if (t > 255) t = 255;
+  eadk_color_t flash = RGB(255, 250, 120 + t / 3);
+
+  draw_rect(0, HUD_H, SW, 3, flash);           // top edge of viewport
+  draw_rect(0, SH - 3, SW, 3, flash);          // bottom edge
+  draw_rect(0, HUD_H, 3, SH - HUD_H, flash);   // left edge
+  draw_rect(SW - 3, HUD_H, 3, SH - HUD_H, flash); // right edge
+}
+
 static void draw_hud() {
   draw_rect(0, 0, SW, HUD_H, COLOR_HUD_BG);
 
@@ -890,6 +905,7 @@ int main(int argc, char * argv[]) {
 
       // Render Scene
       cast_and_draw();
+      draw_muzzle_flash_overlay();
       draw_enemies();
       draw_hit_marker();
       draw_hud();
