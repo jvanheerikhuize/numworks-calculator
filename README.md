@@ -66,13 +66,27 @@ A complete open-source development toolkit, CLI, and game engine for the **NumWo
 
 ## Quickstart
 
-### 1. Set Up USB Permissions (Linux)
+### 1. Set Up USB Permissions
+
+**Linux:**
 
 ```bash
 ./setup-udev.sh
 ```
 
 *(Or copy `50-numworks-calculator.rules` to `/etc/udev/rules.d/` and run `sudo udevadm control --reload-rules && sudo udevadm trigger`).*
+
+**Windows:**
+
+Windows binds its own STMicroelectronics driver to the calculator by default, which `pyusb`'s `libusb` backend can't talk to. You need to replace it with a `WinUSB` driver using [Zadig](https://zadig.akeo.ie/):
+
+1. Download and run Zadig (no install required).
+2. Connect the calculator via USB and put it in the mode you need (normal Epsilon mode, or DFU/bootloader mode for flashing).
+3. In Zadig, select `Options > List All Devices`, then pick the NumWorks device from the dropdown (it may show as "STM32 ..." or the device's USB ID `0483:A291` for normal mode / `0483:DF11` for DFU mode).
+4. Choose `WinUSB` as the replacement driver and click `Replace Driver` (or `Install Driver`).
+5. Repeat for the *other* USB ID if you use both normal and DFU mode (e.g. once for `0483:A291`, once for `0483:DF11`) — Zadig only binds one device at a time.
+
+*(This driver swap only affects how Windows routes USB access for this specific device/mode; it doesn't uninstall the calculator's normal Epsilon-mode driver as seen by other software.)*
 
 ### 2. Activate Environment & Install
 
