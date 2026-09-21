@@ -6,3 +6,4 @@ build/
 dist/
 scripts/
 *.bin
+c_apps/*/output/

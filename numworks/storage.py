@@ -32,9 +32,12 @@ class Record:
 class Storage:
     """Parses and manipulates NumWorks Epsilon storage buffer."""
 
-    def __init__(self, raw_buffer: bytes):
+    def __init__(self, raw_buffer: Optional[bytes] = None):
+        """Parse raw storage buffer."""
         self.raw_data = raw_buffer
         self.records: List[Record] = []
+        if raw_buffer is None:
+            return
         self._parse()
 
     def _parse(self) -> None:

@@ -43,22 +43,17 @@ class DfuDevice:
         self.transfer_size = transfer_size
 
     def claim(self) -> None:
-        """Claim the DFU USB interface."""
+        """Claim the USB interface."""
         try:
             if self.dev.is_kernel_driver_active(self.interface_number):
                 self.dev.detach_kernel_driver(self.interface_number)
-        except Exception:
+        except usb.core.USBError:
             pass
-
-        try:
-            self.dev.set_interface_altsetting(
-                interface=self.interface_number,
-                alternate_setting=self.alternate_setting,
-            )
-        except Exception:
-            pass
-
         usb.util.claim_interface(self.dev, self.interface_number)
+
+    def set_alt_setting(self, alt_setting: int) -> None:
+        """Switch alternate setting (e.g. 0 for Flash, 1 for RAM)."""
+        self.dev.set_interface_altsetting(interface=self.interface_number, alternate_setting=alt_setting)
 
     def release(self) -> None:
         """Release the claimed DFU interface."""
@@ -231,29 +226,31 @@ class DfuDevice:
         progress_callback: Optional[Callable[[int, int], None]] = None,
     ) -> None:
         """Write `data` to memory starting at `address`."""
-        self.set_address(address)
-        block_number = 2
         offset = 0
-
         while offset < len(data):
             chunk = data[offset : offset + self.transfer_size]
-            self.download_block(block_number, chunk)
+            self.set_address(address + offset)
+            self.download_block(2, chunk)
             offset += len(chunk)
-            block_number += 1
             if progress_callback:
                 progress_callback(offset, len(data))
 
-        # Finalize download with empty block 0
-        self.dev.ctrl_transfer(
-            DFU_REQUEST_OUT,
-            DfuRequest.DNLOAD,
-            0,
-            self.interface_number,
-            b"",
-            timeout=5000,
-        )
-        self.wait_not_busy()
-        self.abort()
+        try:
+            self.dev.ctrl_transfer(
+                DFU_REQUEST_OUT,
+                DfuRequest.DETACH,
+                1000,
+                self.interface_number,
+                b"",
+                timeout=5000,
+            )
+        except usb.core.USBError:
+            pass
+
+        try:
+            self.abort()
+        except usb.core.USBError:
+            pass
 
     @staticmethod
     def parse_memory_layout(descriptor_string: str) -> List[Dict[str, Any]]:

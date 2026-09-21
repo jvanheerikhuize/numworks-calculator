@@ -1,120 +1,166 @@
-# NumWorks Probe Toolkit
+# NumWorks Calculator Toolkit & Game Engine
 
-A Python toolkit and CLI for probing, inspecting, and interacting with NumWorks graphing calculators (N0100, N0110, N0115, and N0120) over USB.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Platform](https://img.shields.io/badge/hardware-NumWorks%20N0100%20%7C%20N0110%20%7C%20N0120-red.svg)](https://www.numworks.com/)
+[![Epsilon](https://img.shields.io/badge/OS-Epsilon%20v22%E2%80%93v26+-green.svg)](https://github.com/numworks/epsilon)
+
+A complete open-source development toolkit, CLI, and game engine for the **NumWorks graphing calculator** (N0100, N0110, N0115, and N0120) running Epsilon OS. Build and deploy games in **MicroPython** or compile native **C/C++ ARM binaries** (`.nwa`) running at 60 FPS with hardware V-Sync!
+
+---
+
+> 🎮 **New here? Want to code your first calculator game?**  
+> Check out the beginner-friendly step-by-step tutorial: **[CREATING_APPS.md](CREATING_APPS.md)**!  
+> *(Written so anyone—including high-school students—can build their own game in minutes!)*
 
 ---
 
 ## Features
 
-- **Device Discovery & Identification**: Automatic detection of connected NumWorks calculators, hardware model detection (including the latest USB-C N0120), serial number, and operating mode (Epsilon OS vs. DFU Recovery).
-- **Firmware & Memory Probing**: Inspects the flash memory layout, Epsilon OS version, git commit hash, and storage buffer offsets.
-- **Python Script Management**:
-  - List all Python scripts stored in the calculator's internal storage.
-  - View syntax-highlighted scripts directly in the terminal.
-  - Dump/extract all Python scripts to local `.py` files.
-- **Raw Memory & Flash Dump**: Read and dump arbitrary memory segments via DFU upload.
-- **Clean Python API**: High-level classes (`NumWorksDevice`, `CalculatorProbe`, `DfuDevice`, `Storage`) for custom scripting and reverse engineering.
+- **Dual Engine Architecture**:
+  - 🐍 **MicroPython**: Instant deploy to the calculator's Python app with automatic memory profiling and heap checks.
+  - ⚡ **Native C/C++ (EADK)**: Compile native ARM Cortex-M7 binaries (`.nwa`) up to 6 MB with 60 FPS hardware V-Sync and custom home-screen icons.
+- **Automated Deployment Pipeline (`numworks deploy`)**: Pre-flight checks (AST allocation analysis, size limits, syntax validation) before flashing.
+- **Sideload Command (`numworks deploy-nwa`)**: 1-click CLI upload of native `.nwa` apps directly to the calculator over USB via DFU.
+- **MicroPython Game Library**: Battle-tested 3D raycasters and games optimized for Epsilon's 32 KB heap (`maties`, `floom`, `snake`).
+- **Static Memory Profiler (`tools/test_allocs.py`)**: AST analyzer that enforces zero-allocation game loop constraints so your scripts never crash from heap fragmentation.
+- **Hardware & Firmware Probe**: Deep USB inspection of flash memory layout, Epsilon version, storage buffer addresses, and USB state.
 
 ---
 
-## Getting Started
+## Directory Structure
 
-### 1. Set Up USB Permissions (Linux udev Rule)
+```
+├── numworks/               # Core Python SDK & CLI
+│   ├── cli.py              # CLI entry point (info, probe, deploy, deploy-nwa, ls)
+│   ├── deploy.py           # Pre-flight checks and deploy pipeline
+│   ├── device.py           # USB device discovery & metadata
+│   ├── dfu.py              # USB DFU protocol & alternate settings
+│   ├── probe.py            # Memory layout & firmware inspection
+│   └── storage.py          # Epsilon storage buffer parser & builder
+├── c_apps/                 # Native C/C++ Applications (.nwa)
+│   ├── maties/             # High-performance 3D raycaster shooter (60 FPS, 80 rays)
+│   └── sample_app/         # Official starter template for new C apps
+├── games/                  # Python Games (.py)
+│   ├── maties.py           # 3D raycasting wave survival shooter (zero-allocation)
+│   ├── floom.py            # 3D raycaster maze crawler
+│   └── snake.py            # Classic 2D grid arcade
+├── tools/                  # Developer Tooling
+│   ├── test_allocs.py      # Static AST allocation checker
+│   └── minify.py           # Token-safe script minifier
+├── tests/                  # Automated Test Suite
+│   ├── test_storage.py     # Storage buffer parsing/packing unit tests
+│   └── test_games.py       # Pre-deploy checks for all games
+├── docs/                   # Deep Technical Documentation
+│   ├── c-apps-sdk.md       # Complete guide to native C/C++ EADK development
+│   ├── memory-model.md     # 32KB heap architecture, bytearray vs list, GC
+│   ├── micropython-gotchas.md # Language quirks, syntax limits, traps
+│   └── dfu-protocol.md     # DFU state machine, storage buffer structure
+├── CREATING_APPS.md        # Beginner guide: How to make games in Python & C
+├── HARDWARE.md             # N0120 hardware specifications & benchmarks
+├── LICENSE                 # MIT License
+└── pyproject.toml          # Package configuration
+```
 
-On Linux, non-root users require a udev rule to send USB control transfers to the calculator. Run the included setup script:
+---
+
+## Quickstart
+
+### 1. Set Up USB Permissions (Linux)
 
 ```bash
 ./setup-udev.sh
 ```
 
-*(Alternatively, copy `50-numworks-calculator.rules` to `/etc/udev/rules.d/` and reload with `sudo udevadm control --reload-rules && sudo udevadm trigger`).*
+*(Or copy `50-numworks-calculator.rules` to `/etc/udev/rules.d/` and run `sudo udevadm control --reload-rules && sudo udevadm trigger`).*
 
-Unplug and re-plug your calculator after setting up the rule.
-
-### 2. Activate Environment
-
-The Python virtual environment is already prepared in `.venv/`:
+### 2. Activate Environment & Install
 
 ```bash
 source .venv/bin/activate
+pip install -e .
 ```
 
 ---
 
 ## CLI Usage
 
-### Quick Device Info
-Identify the connected calculator without needing root access:
+### Deploying a Python Game
+
+Deploy a script directly to the calculator with pre-flight safety checks (syntax check, size limits, and zero-allocation verification):
+
 ```bash
-numworks info
+# Deploy with pre-flight safety checks
+numworks deploy games/maties.py
+
+# Clean other non-system scripts and install fresh
+numworks deploy games/maties.py --clean
+
+# Quick list of scripts stored on device
+numworks ls
 ```
 
-### Full Hardware & Firmware Probe
-Perform a deep probe of hardware revision, Epsilon version, memory layout, and stored scripts:
+### Sideloading a Native C Application (.nwa)
+
+For 60 FPS native performance, true V-Sync, and up to 6 MB storage:
+
 ```bash
-numworks probe
+# 1. Build the native C app
+make -C c_apps/maties
+
+# 2. Sideload to the calculator via USB
+numworks deploy-nwa c_apps/maties/output/app.nwa
 ```
 
-### Python Scripts Management
+*(Your calculator will automatically reboot and display your game's icon on the home screen!)*
 
-**List scripts stored on the calculator:**
-```bash
-numworks scripts list
-```
+### Probing Hardware & Firmware
 
-**View a script in the terminal:**
 ```bash
-numworks scripts view mandelbrot.py
-```
-
-**Dump all scripts to a local directory:**
-```bash
-numworks scripts dump ./my_scripts/
-```
-
-### Raw Memory Dump
-Dump a memory region (e.g. 4096 bytes from storage address):
-```bash
-numworks dump-memory 0x90000000 4096 flash_dump.bin
+numworks info       # Quick USB metadata
+numworks probe      # Full memory layout, firmware version, and storage buffer
 ```
 
 ---
 
-## Python API Example
+## Developer Tooling
 
-You can also use the library programmatically in your own scripts:
+### Static Allocation Analysis
 
-```python
-from numworks import NumWorksDevice, CalculatorProbe
+Epsilon's 32 KB heap cannot tolerate dynamic allocations (lists, tuples, generators) inside a fast game loop. Verify your script before flashing:
 
-# 1. Discover device
-calc = NumWorksDevice.find_first()
-if not calc:
-    print("No calculator found!")
-    exit(1)
+```bash
+python3 tools/test_allocs.py games/maties.py
+```
 
-# 2. Basic USB metadata
-info = calc.get_info()
-print(f"Connected: {info.model_name} (Serial: {info.serial_number})")
+### Token-Safe Minifier
 
-# 3. Full probe
-probe = CalculatorProbe(calc)
-result = probe.probe()
+Reduce file size to conserve AST compilation heap memory without breaking Python indentation:
 
-print(f"Epsilon Version: {result.firmware_info.kernel_version}")
-print(f"Stored Scripts: {len(result.scripts)}")
+```bash
+python3 tools/minify.py input.py output.py
+```
 
-for script in result.scripts:
-    print(f" - {script.name} ({script.size} bytes, auto-import={script.auto_import})")
+### Running Test Suite
+
+```bash
+python3 -m unittest discover -s tests
 ```
 
 ---
 
-## Supported Hardware
+## Documentation
 
-| Model | Port | Processor | USB Mode |
-|---|---|---|---|
-| **N0100** | Micro-USB | STM32F412 | Supported |
-| **N0110** | Micro-USB | STM32F730 | Supported |
-| **N0115** | Micro-USB | STM32F730 | Supported |
-| **N0120** | USB-C | STM32H7 / STM32F7 | Supported |
+- **[CREATING_APPS.md](CREATING_APPS.md)** — Beginner's guide: How to make games in Python and C.
+- **[docs/c-apps-sdk.md](docs/c-apps-sdk.md)** — Native C/C++ EADK development and `.nwa` packaging.
+- **[HARDWARE.md](HARDWARE.md)** — STM32H725 @ 550MHz specs, display, and hardware benchmarks.
+- **[docs/memory-model.md](docs/memory-model.md)** — 32 KB MicroPython heap limits, AST budget, and `bytearray` guidelines.
+- **[docs/micropython-gotchas.md](docs/micropython-gotchas.md)** — Missing modules, syntax traps, `KEY_BACK` kill switch.
+- **[docs/dfu-protocol.md](docs/dfu-protocol.md)** — USB DFU protocol, RAM address `0x2400657c`, and storage format.
+- **[games/README.md](games/README.md)** — Game catalog and design standards.
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE) — free to use, modify, and distribute for personal, educational, and commercial projects.
