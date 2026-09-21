@@ -58,11 +58,11 @@ class StDfuCommand(IntEnum):
     ERASE_PAGE = 0x41
     READ_UNPROTECT = 0x92
 
-# Epsilon Magic Signatures
-MAGIC_KERNEL_HEADER = b"\xDE\xC0\x0D\xF0"    # 0xF00DC0DE (little-endian)
-MAGIC_USERLAND_HEADER = b"\xDE\xC0\xED\xFE"  # 0xFEEDC0DE (little-endian)
-MAGIC_SLOT_INFO = b"\xEF\xEE\xDB\xBA"        # 0xBADBEEEF (little-endian)
-MAGIC_STORAGE_RECORD = b"\xEE\x0B\xDD\xBA"   # 0xBADD0BEE (little-endian)
+# Epsilon Magic Signatures (Stored as big-endian hex words in memory)
+MAGIC_KERNEL_HEADER = bytes.fromhex("F00DC0DE")    # b"\xf0\r\xc0\xde"
+MAGIC_USERLAND_HEADER = bytes.fromhex("FEEDC0DE")  # b"\xfe\xed\xc0\xde"
+MAGIC_SLOT_INFO = bytes.fromhex("BADBEEEF")        # b"\xba\xdb\xee\xef"
+MAGIC_STORAGE_RECORD = bytes.fromhex("BADD0BEE")   # b"\xba\xdd\x0b\xee"
 
 # Header Offsets (within flash base)
 HEADER0_OFFSET = 428   # 0x1AC

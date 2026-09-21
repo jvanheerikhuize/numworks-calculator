@@ -126,14 +126,38 @@ class CalculatorProbe:
         return []
 
     def _probe_firmware_headers(self, memory_layout: List[Dict[str, Any]]) -> FirmwareInfo:
-        """Scan memory base for Epsilon kernel and userland headers."""
+        """Scan memory and RAM for Epsilon kernel and userland headers."""
         fw = FirmwareInfo()
-        if not self.dfu or not memory_layout:
+        if not self.dfu:
+            return fw
+
+        # 1. Try Slot Info in RAM (Used on Epsilon 16+ / N0120 / N0110)
+        rev = self.device.dev.bcdDevice
+        model_def = MODELS.get(rev)
+        ram_start = model_def.ram_start if model_def else 0x24000000
+
+        try:
+            slot_info = self.dfu.upload(ram_start, 16)
+            if slot_info.startswith(MAGIC_SLOT_INFO) and slot_info.endswith(MAGIC_SLOT_INFO):
+                k_addr, u_addr = struct.unpack_from("<II", slot_info, 4)
+                if k_addr:
+                    raw_k = self.dfu.upload(k_addr, 24)
+                    if raw_k.startswith(MAGIC_KERNEL_HEADER):
+                        self._parse_kernel_header(raw_k, fw)
+                if u_addr:
+                    raw_u = self.dfu.upload(u_addr, 48)
+                    if raw_u.startswith(MAGIC_USERLAND_HEADER):
+                        self._parse_userland_header(raw_u, fw)
+                return fw
+        except Exception:
+            pass
+
+        if not memory_layout:
             return fw
 
         base_addr = memory_layout[0]["address"]
 
-        # Try Header0
+        # 2. Try Header0 (older Epsilon)
         try:
             raw_h0 = self.dfu.upload(base_addr + HEADER0_OFFSET, HEADER0_SIZE)
             if raw_h0.startswith(MAGIC_KERNEL_HEADER):
@@ -142,7 +166,7 @@ class CalculatorProbe:
         except Exception:
             pass
 
-        # Try Header1
+        # 3. Try Header1
         try:
             raw_h1 = self.dfu.upload(base_addr + HEADER1_OFFSET, HEADER1_SIZE)
             if raw_h1.startswith(MAGIC_KERNEL_HEADER):
@@ -153,12 +177,42 @@ class CalculatorProbe:
 
         return fw
 
+    def _parse_userland_header(self, raw: bytes, fw: FirmwareInfo) -> None:
+        """Extract userland version, storage address, and limits from userland header."""
+        # Userland Header:
+        # [0:4] MAGIC (0xFEEDC0DE)
+        # [4:12] Version string
+        # [12:16] Storage address (uint32_t LE)
+        # [16:20] Storage size (uint32_t LE)
+        # [20:24] External apps flash start (uint32_t LE)
+        # [24:28] External apps flash end (uint32_t LE)
+        # [28:32] External apps RAM start (uint32_t LE)
+        # [32:36] External apps RAM end (uint32_t LE)
+        try:
+            v_end = raw.find(b"\x00", 4)
+            fw.userland_version = raw[4 : v_end if v_end != -1 else 12].decode("utf-8", errors="replace")
+        except Exception:
+            pass
+
+        if len(raw) >= 16:
+            fw.storage_address = struct.unpack_from("<I", raw, 12)[0]
+        if len(raw) >= 20:
+            fw.storage_size = struct.unpack_from("<I", raw, 16)[0]
+        if len(raw) >= 24:
+            fw.external_apps_flash_start = struct.unpack_from("<I", raw, 20)[0]
+        if len(raw) >= 28:
+            fw.external_apps_flash_end = struct.unpack_from("<I", raw, 24)[0]
+        if len(raw) >= 32:
+            fw.external_apps_ram_start = struct.unpack_from("<I", raw, 28)[0]
+        if len(raw) >= 36:
+            fw.external_apps_ram_end = struct.unpack_from("<I", raw, 32)[0]
+
     def _parse_kernel_header(self, raw: bytes, fw: FirmwareInfo) -> None:
         """Extract version and storage address from kernel header."""
         # Kernel Header:
         # [0:4] MAGIC (0xF00DC0DE)
-        # [4:12] Version string (null-terminated or fixed 8 bytes)
-        # [12:20] Git patch hash (null-terminated or fixed 8 bytes)
+        # [4:12] Version string
+        # [12:20] Git patch hash
         # [20:24] Storage address (uint32_t LE)
         # [24:28] Optional storage size (uint32_t LE)
         try:
@@ -174,10 +228,14 @@ class CalculatorProbe:
             pass
 
         if len(raw) >= 24:
-            fw.storage_address = struct.unpack_from("<I", raw, 20)[0]
+            s_addr = struct.unpack_from("<I", raw, 20)[0]
+            if s_addr and not fw.storage_address:
+                fw.storage_address = s_addr
 
         if len(raw) >= 28:
-            fw.storage_size = struct.unpack_from("<I", raw, 24)[0]
+            s_size = struct.unpack_from("<I", raw, 24)[0]
+            if s_size and fw.storage_size == DEFAULT_STORAGE_SIZE:
+                fw.storage_size = s_size
 
     def _probe_storage(self, fw: FirmwareInfo):
         """Read storage memory buffer and parse stored Python scripts."""
